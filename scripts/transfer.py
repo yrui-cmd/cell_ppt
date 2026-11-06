@@ -17,7 +17,7 @@ from handoff import MATERIAL, PLAN, TEMPLATE, check, inspect, json_text, sha, sl
 from ppt_credentials import API, load as load_credential
 
 MODE = "planned_deck"
-FINAL_PPTX = "成品.pptx"
+FINAL_PPTX = "成品ppt.pptx"
 NAMES = {"pptx": PLAN, "pptx2": TEMPLATE, "material": MATERIAL}
 FILE_TYPES = {"pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
               "pdf": "application/pdf"}
@@ -150,7 +150,7 @@ class Client:
                   and slide_count(destination) == result_pages, "已保存的回传原件与服务端成品不符")
             return destination
 
-        legacy = next((path for path in (root / "交付" / "成品ppt.pptx",
+        legacy = next((path for path in (root / "交付" / "成品.pptx",
                                         root / "成品_回传原件.pptx") if path.is_file()), None)
         with NamedTemporaryFile(dir=destination.parent, suffix=".pptx", delete=False) as stream:
             staged = Path(stream.name)
@@ -163,6 +163,8 @@ class Client:
                 received = 0
                 with self.session.get(url, headers={"Authorization": f"Bearer {self.token}"},
                                       stream=True, timeout=(10, 120), allow_redirects=False) as response:
+                    if response.status_code in {408, 425, 429} or 500 <= response.status_code < 600:
+                        raise requests.HTTPError(f"成品下载暂不可用（HTTP {response.status_code}）", response=response)
                     check(response.status_code == 200, f"成品下载返回 HTTP {response.status_code}")
                     with staged.open("wb") as stream:
                         for chunk in response.iter_content(1024 * 1024):
