@@ -8,6 +8,7 @@ from lxml import etree
 import requests
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 import playback
+import return_watch
 import progress_panel
 import transfer
 
@@ -42,10 +43,11 @@ class PlaybackRecoveryTests(unittest.TestCase):
                 self.assertEqual(transfer.play_elements(None,root,{'job_id':'job'},{}),state)
                 launch.assert_not_called()
 
-    def test_download_timeout_retries_the_same_job_before_preview(self):
+    def test_download_timeout_retries_same_job_before_return_to_chat(self):
         order = {"job_id": "a" * 32, "status": "queued", "credits": 1, "queued_at_unix": 1000}
         reply = {**order, "mode": transfer.MODE, "page_count": 1, "status": "completed"}
         server = MagicMock()
+        server.output = None
         state = {"job_id": order["job_id"], "worker_pid": 321}
 
         def check_wait(_seconds):
@@ -57,14 +59,15 @@ class PlaybackRecoveryTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory, \
                 patch.object(progress_panel, "Client") as client, \
-                patch.object(progress_panel, "play_elements", side_effect=[requests.Timeout(), state]) as play, \
+                patch.object(return_watch, "receive_ready", side_effect=[requests.Timeout(), state]) as receive, \
                 patch.object(progress_panel.time, "sleep", side_effect=check_wait) as delay:
             client.return_value.call.return_value = reply
             progress_panel.refresh(server, Path(directory), order, "synthetic")
-        self.assertEqual(play.call_count, 2)
-        self.assertEqual(play.call_args_list[0], play.call_args_list[1])
+        self.assertEqual(receive.call_count, 2)
+        self.assertEqual(receive.call_args_list[0], receive.call_args_list[1])
         delay.assert_called_once()
         self.assertFalse(server.remote["receiving"])
-        self.assertEqual(server.output, state)
+        self.assertIsNone(server.output)
+        self.assertIn("原对话", server.remote["playback_label"])
 
 if __name__=='__main__':unittest.main()
