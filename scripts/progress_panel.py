@@ -19,7 +19,7 @@ from pptx.exc import PythonPptxError
 from output_worker import result_for
 from playback import worker_alive
 from ppt_credentials import load as load_credential
-from transfer import Client, MODE, check, order_lock, play_elements, read, write
+from transfer import Client, MODE, check, order_lock, read, write
 
 SECONDS_PER_CREDIT = 9 * 60 + 32
 LABELS = {
@@ -31,7 +31,7 @@ LABELS = {
     "expired": "订单已过期",
 }
 TERMINAL = {"completed", "failed", "cancelled", "expired"}
-PANEL_VERSION = 4
+PANEL_VERSION = 5
 
 
 def load_order(root):
@@ -80,7 +80,8 @@ def refresh(server, root, order, token):
                     if reply["status"] == "completed":
                         server.remote.update(receiving=True, playback_label="制作完成 · 正在接收成品")
                         try:
-                            server.output = play_elements(client, root, order, reply)
+                            from return_watch import receive_ready
+                            receive_ready(client, root, order, reply)
                         except requests.RequestException:
                             server.remote["playback_label"] = "制作完成 · 正在重新接收成品"
                         except (OSError, ValueError, KeyError, TypeError, BadZipFile, PythonPptxError) as error:
@@ -89,7 +90,7 @@ def refresh(server, root, order, token):
                             server.remote.update(receiving=False, playback_label="制作完成 · 成品接收或预览需要处理")
                             return
                         else:
-                            server.remote.update(receiving=False, playback_label="正在输出 PPT")
+                            server.remote.update(receiving=False, playback_label="成品已返回 · 等待原对话接续输出")
                             return
                     if reply["status"] in TERMINAL - {"completed"}:
                         return

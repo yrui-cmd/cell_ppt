@@ -194,8 +194,9 @@ def play_elements(client, root, order, reply):
             # A failed or exited worker is retryable. Preserve the old preview and rebuild.
             state = {}
         if not state:
-            source = client.receive(root, order, reply,
-                                    inspect(root, legacy=True) if "pptx" in order.get("sha256", {}) else inspect(root))
+            with order_lock(root / "result-receive.lock"):
+                source = client.receive(root, order, reply,
+                                        inspect(root, legacy=True) if "pptx" in order.get("sha256", {}) else inspect(root))
             copy = root / FINAL_PPTX
             macos = sys.platform == "darwin"
             if macos or copy.exists():
@@ -217,7 +218,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["submit", "status", "progress", "play-elements"])
     parser.add_argument("root", type=Path)
-    # Older launchers pass this flag. Playback is now the default.
+    parser.add_argument("--thread-id", default=os.environ.get("CODEX_THREAD_ID"))
+    # Legacy flag remains accepted; only an explicit play-elements action starts output.
     parser.add_argument("--play-elements-on-return", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     try:
@@ -234,6 +236,9 @@ def main():
             elif args.action == "play-elements":
                 from progress_panel import load_order
                 order = load_order(args.root)
+                if (args.root / "return-watch.json").is_file():
+                    from return_watch import require_output_choice
+                    require_output_choice(args.root, args.thread_id)
                 reply = client.call("GET", f"/jobs/{order['job_id']}")
                 state = play_elements(client, args.root, order, reply)
             else:
